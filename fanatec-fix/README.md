@@ -48,4 +48,4 @@ Every rig runs the launcher and they find each other automatically on the same n
 2. Home screen shows a bar of every car: **Ready / Racing / Fixing / Fault / Offline**.
 3. **SINGLE PLAYER** works whenever this car's wheel works – no network needed.
 4. **MULTIPLAYER** only lights up when the network is connected and at least one other car is ready ("3 cars ready"). Otherwise it says "Network not connected" or "Waiting for other cars".
-5. After pressing Multiplayer, players join the lobby in F1 → Multiplayer → LAN (F1 can't be auto-joined by outside software).
+5. After pressing Multiplayer, players join the same lobby in F1's Multiplayer menu (F1 can't be auto-joined by outside software). Note: recent F1 games run multiplayer through EA's online servers, so the rigs also need internet for the race itself.

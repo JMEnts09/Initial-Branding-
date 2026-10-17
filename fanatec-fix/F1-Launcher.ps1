@@ -165,7 +165,7 @@ $layout.Controls.Add($modes, 0, 3)
 
 $foot = New-Object Windows.Forms.Label -Property @{
     Dock = 'Bottom'; Height = 40; ForeColor = 'Gray'; Font = (F 12 $false); TextAlign = 'MiddleCenter'
-    Text = 'Multiplayer: start on every car, then join the lobby in F1 → Multiplayer → LAN   ·   Staff: F12' }
+    Text = 'Multiplayer: start on every car, then join the same lobby in F1's Multiplayer menu   ·   Staff: F12' }
 
 $form.Controls.AddRange(@($layout, $foot, $top))
 
