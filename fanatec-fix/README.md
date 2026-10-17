@@ -32,3 +32,12 @@ Checks the wheel every boot, auto-repairs it, and only launches F1 when the whee
 3. Set Windows to log in automatically, and turn the wheel on before / at the same time as the PC.
 
 On screen players see: **"Wheel detected and working – Launching F1"** (green), or **"WHEEL FAULT – call staff"** (red). Staff fix the wheel and press **R** to retry.
+
+## 5. F1 Arcade Launcher (F1-Launcher.ps1) – replaces section 4
+Full-screen home screen with live wheel status, game picker (F1 25 / F1 24) and a big PLAY button that only works when the wheel is detected and working. Returns to the home screen when the game closes.
+
+1. Edit the SETTINGS block at the top (venue name, **staff PIN**, games).
+2. Run once as Administrator: `powershell -ExecutionPolicy Bypass -File .\F1-Launcher.ps1 -Install`
+3. Turn on Windows automatic login.
+
+Staff menu: press **F12**, enter the PIN → re-check/repair wheel, open log, exit to Windows, shut down PC.
