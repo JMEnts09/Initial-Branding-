@@ -41,3 +41,11 @@ Full-screen home screen with live wheel status, game picker (F1 25 / F1 24) and 
 3. Turn on Windows automatic login.
 
 Staff menu: press **F12**, enter the PIN → re-check/repair wheel, open log, exit to Windows, shut down PC.
+
+### Multiplayer over LAN
+Every rig runs the launcher and they find each other automatically on the same network (UDP port 47800; `-Install` opens the firewall).
+1. In SETTINGS give each rig a **unique `$CarNumber`** (1, 2, 3 …) before running `-Install`.
+2. Home screen shows a bar of every car: **Ready / Racing / Fixing / Fault / Offline**.
+3. **SINGLE PLAYER** works whenever this car's wheel works – no network needed.
+4. **MULTIPLAYER** only lights up when the network is connected and at least one other car is ready ("3 cars ready"). Otherwise it says "Network not connected" or "Waiting for other cars".
+5. After pressing Multiplayer, players join the lobby in F1 → Multiplayer → LAN (F1 can't be auto-joined by outside software).
