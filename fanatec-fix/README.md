@@ -23,3 +23,12 @@ What it does:
 Use Fanatec's **firmware recovery/bootloader mode** (hold the specified button while powering on – see your base's manual), then run *Fanatec Firmware Manager* to reflash. No app reinstall needed.
 
 If corruption keeps recurring after all of this, the base or rim's USB/QR board is likely faulty – contact Fanatec support with `fanatec-log.txt` from the script folder.
+
+## 4. Arcade startup check (Start-Arcade.ps1)
+Checks the wheel every boot, auto-repairs it, and only launches F1 when the wheel works.
+
+1. Open `Start-Arcade.ps1` in Notepad and set `$GameLaunch` (F1 25 Steam = `steam://rungameid/3059520`, F1 24 = `2488620`).
+2. Run once as Administrator: `powershell -ExecutionPolicy Bypass -File .\Start-Arcade.ps1 -Install`
+3. Set Windows to log in automatically, and turn the wheel on before / at the same time as the PC.
+
+On screen players see: **"Wheel detected and working – Launching F1"** (green), or **"WHEEL FAULT – call staff"** (red). Staff fix the wheel and press **R** to retry.
