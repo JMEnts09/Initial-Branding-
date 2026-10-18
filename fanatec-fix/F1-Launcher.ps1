@@ -5,6 +5,7 @@
   - SINGLE PLAYER: works whenever this car's wheel works (network not needed)
   - MULTIPLAYER: only lights up when this car + at least one other car on the LAN are ready
   - Attract video: loops attract.mp4 (in this folder) when nobody has touched the screen for a while
+  - Intro video: plays intro.mp4 (or attract.mp4) full screen while F1 is loading, closes when the game appears
   - Hidden staff menu (press F12, enter PIN)
 
   Install once on EACH rig (as Administrator), after setting $CarNumber:
@@ -35,6 +36,10 @@ if (Test-Path $cfgPath) {
     if ($cfg.IdleSeconds) { $IdleSeconds = [int]$cfg.IdleSeconds }
 }
 $AttractVideo = Get-ChildItem $PSScriptRoot -Filter 'attract.*' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+# Intro video plays while F1 loads; uses intro.* if present, otherwise the attract video
+$IntroVideo   = Get-ChildItem $PSScriptRoot -Filter 'intro.*' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+if (-not $IntroVideo) { $IntroVideo = $AttractVideo }
+$IntroMaxSeconds = 90                            # stop the intro after this long even if F1 hasn't appeared
 
 $FanatecVid = 'VID_0EB7'
 $log = Join-Path $PSScriptRoot 'fanatec-log.txt'
@@ -64,41 +69,52 @@ public static class IdleTime {
 }
 '@
 
-# ---------- attract video: loops full screen when idle, any touch/click/key returns to the home screen ----------
+# ---------- videos ----------
+# attract: loops when idle, any touch/click/key returns to the home screen
+# intro:   loops while F1 is loading, closes itself when the game window appears
 $script:attract = $null
-function Show-Attract {
-    if (-not $AttractVideo -or $script:attract) { return }
+$script:intro   = $null
+function New-VideoWindow($path, $caption) {
     $w = New-Object System.Windows.Window
     $w.WindowStyle = 'None'; $w.WindowState = 'Maximized'; $w.ResizeMode = 'NoResize'; $w.Topmost = $true
     $w.Background = [System.Windows.Media.Brushes]::Black
     $grid = New-Object System.Windows.Controls.Grid
-    $script:media = New-Object System.Windows.Controls.MediaElement
-    $script:media.Source = [Uri]$AttractVideo; $script:media.LoadedBehavior = 'Manual'; $script:media.Stretch = 'UniformToFill'
-    $script:media.Add_MediaEnded({ $script:media.Position = [TimeSpan]::Zero; $script:media.Play() })
+    $m = New-Object System.Windows.Controls.MediaElement
+    $m.Source = [Uri]$path; $m.LoadedBehavior = 'Manual'; $m.Stretch = 'UniformToFill'
+    $m.Add_MediaEnded({ $this.Position = [TimeSpan]::Zero; $this.Play() })
     $tb = New-Object System.Windows.Controls.TextBlock
-    $tb.Text = 'TOUCH ANYWHERE TO PLAY'; $tb.FontSize = 54; $tb.FontWeight = [System.Windows.FontWeights]::Bold
+    $tb.Text = $caption; $tb.FontSize = 54; $tb.FontWeight = [System.Windows.FontWeights]::Bold
     $tb.Foreground = [System.Windows.Media.Brushes]::White; $tb.HorizontalAlignment = 'Center'; $tb.VerticalAlignment = 'Bottom'
     $tb.Margin = New-Object System.Windows.Thickness(0, 0, 0, 60)
-    [void]$grid.Children.Add($script:media); [void]$grid.Children.Add($tb)
+    [void]$grid.Children.Add($m); [void]$grid.Children.Add($tb)
     $w.Content = $grid
-    $close = { if ($script:attract) { $script:media.Stop(); $script:attract.Close(); $script:attract = $null; $form.Activate() } }
-    $w.Add_PreviewMouseDown($close); $w.Add_PreviewKeyDown($close); $w.Add_PreviewTouchDown($close)
-    $script:attract = $w
-    $w.Show(); $script:media.Play()
+    $w.Tag = $m
+    $w.Add_Loaded({ $this.Tag.Play() })
+    $w
+}
+function Close-Video($w) { if ($w) { $w.Tag.Stop(); $w.Close() } }
+
+function Show-Attract {
+    if (-not $AttractVideo -or $script:attract) { return }
+    $script:attract = New-VideoWindow $AttractVideo 'TOUCH ANYWHERE TO PLAY'
+    $close = { if ($script:attract) { Close-Video $script:attract; $script:attract = $null; $form.Activate() } }
+    $script:attract.Add_PreviewMouseDown($close); $script:attract.Add_PreviewKeyDown($close); $script:attract.Add_PreviewTouchDown($close)
+    $script:attract.Show()
 }
 
-# ---------- wheel logic ----------
-function Test-Wheel {
-    $d = Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue | Where-Object InstanceId -match $FanatecVid
-    if (-not $d -or ($d | Where-Object Status -ne 'OK')) { return $false }
-    [bool](Get-CimInstance Win32_PnPEntity | Where-Object { $_.DeviceID -match $FanatecVid -and $_.Name -match 'game controller|HID' })
+function Show-Intro($game) {
+    if (-not $IntroVideo) { return }
+    $script:intro = New-VideoWindow $IntroVideo "Loading $game…"
+    $script:introStart = Get-Date
+    $script:intro.Show()
 }
-function Repair-Wheel {
-    Log 'Wheel missing - repairing'
-    Get-PnpDevice -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -match $FanatecVid -and $_.Status -ne 'OK' } |
-        ForEach-Object { pnputil /remove-device "$($_.InstanceId)" | Out-Null }
-    Get-Service | Where-Object DisplayName -match 'Fanatec' | Restart-Service -Force -ErrorAction SilentlyContinue
-    pnputil /scan-devices | Out-Null
+function Update-Intro {
+    if (-not $script:intro) { return }
+    $elapsed = ((Get-Date) - $script:introStart).TotalSeconds
+    $gameUp  = Get-Process | Where-Object { $_.Name -match $GameProcess -and $_.MainWindowHandle -ne 0 }
+    if (($gameUp -and $elapsed -ge 8) -or $elapsed -ge $IntroMaxSeconds) {
+        Close-Video $script:intro; $script:intro = $null
+    }
 }
 
 # ---------- LAN: every rig broadcasts "F1RIG|car|state" and listens for the others ----------
@@ -265,6 +281,8 @@ function Start-Race($mode) {
     $status.Text = "Launching $script:selected – $mode…"; $status.ForeColor = 'White'
     $single.Enabled = $false; $multi.Enabled = $false
     [Windows.Forms.Application]::DoEvents()
+    Close-Video $script:attract; $script:attract = $null
+    Show-Intro $script:selected
     Start-Process $Games[$script:selected]
     Start-Sleep 3
     $form.TopMost = $false; $form.WindowState = 'Minimized'
@@ -274,10 +292,11 @@ $multi.Add_Click({ Start-Race 'Multiplayer' })
 
 # Every 3s: check wheel, talk to the other rigs, refresh screen, bring launcher back after a race
 $script:tick = 0
-$timer = New-Object Windows.Forms.Timer -Property @{ Interval = 3000 }
+$timer = New-Object Windows.Forms.Timer -Property @{ Interval = 2000 }
 $timer.Add_Tick({
     $script:tick++
     if ($script:racing) {
+        Update-Intro
         if (-not (Get-Process | Where-Object Name -match $GameProcess)) {
             if ($script:launchSeen) {
                 $script:racing = $false; $script:launchSeen = $false

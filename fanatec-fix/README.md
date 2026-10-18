@@ -8,6 +8,7 @@
 
 Installs to `C:\F1Arcade`. Run `Install.bat` again any time to update – your settings and video are kept.
 The video plays full screen after the idle time; touching the screen, clicking or pressing a key returns to the home screen.
+When PLAY is pressed, an intro video (`intro.mp4`, or the idle video if there isn't one) plays full screen while F1 loads, and closes by itself once the game is on screen.
 
 ## 1. Run the script (once, as Administrator)
 ```

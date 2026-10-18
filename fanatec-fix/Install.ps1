@@ -49,6 +49,17 @@ if ($v) {
     } else { Write-Warning "Video not found: $v" }
 }
 
+# Intro video (plays while F1 loads). Enter = use the idle video for this too
+$curIntro = Get-ChildItem $dest -Filter 'intro.*' -ErrorAction SilentlyContinue | Select-Object -First 1
+$iv = (Read-Host ("Video to play while F1 loads (drag it here, Enter to " + $(if ($curIntro) { "keep $($curIntro.Name)" } else { 'use the idle video' }) + ")")).Trim('"', ' ')
+if ($iv) {
+    if (Test-Path $iv) {
+        Get-ChildItem $dest -Filter 'intro.*' | Remove-Item -Force
+        Copy-Item $iv (Join-Path $dest ('intro' + [IO.Path]::GetExtension($iv))) -Force
+        Write-Host 'Intro video installed.' -ForegroundColor Green
+    } else { Write-Warning "Video not found: $iv" }
+}
+
 Write-Host "`nApplying Fanatec stability fixes..." -ForegroundColor Yellow
 & (Join-Path $dest 'Fanatec-Stabilise.ps1')
 
