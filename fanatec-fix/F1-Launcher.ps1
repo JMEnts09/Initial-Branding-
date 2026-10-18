@@ -5,7 +5,7 @@
   - SINGLE PLAYER: works whenever this car's wheel works (network not needed)
   - MULTIPLAYER: only lights up when this car + at least one other car on the LAN are ready
   - Attract video: loops attract.mp4 (in this folder) when nobody has touched the screen for a while
-  - Intro video: plays intro.mp4 (or attract.mp4) full screen while F1 is loading, closes when the game appears
+  - Intro video: plays intro.mp4 (or attract.mp4) full screen from PLAY until the car is at the track (read from F1's UDP telemetry)
   - Hidden staff menu (press F12, enter PIN)
 
   Install once on EACH rig (as Administrator), after setting $CarNumber:
@@ -39,7 +39,8 @@ $AttractVideo = Get-ChildItem $PSScriptRoot -Filter 'attract.*' -ErrorAction Sil
 # Intro video plays while F1 loads; uses intro.* if present, otherwise the attract video
 $IntroVideo   = Get-ChildItem $PSScriptRoot -Filter 'intro.*' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
 if (-not $IntroVideo) { $IntroVideo = $AttractVideo }
-$IntroMaxSeconds = 90                            # stop the intro after this long even if F1 hasn't appeared
+$IntroMaxSeconds = 600                           # safety: stop the intro after 10 min even if no on-track signal
+$TelemetryPort   = 20777                         # F1 in-game: Settings > Telemetry > UDP Telemetry ON, IP 127.0.0.1, this port
 
 $FanatecVid = 'VID_0EB7'
 $log = Join-Path $PSScriptRoot 'fanatec-log.txt'
@@ -102,17 +103,41 @@ function Show-Attract {
     $script:attract.Show()
 }
 
+# F1's own UDP telemetry tells us when the car is actually at the track.
+# Header byte 6 = packet id. Motion (0) is only sent while a car is in a session;
+# Event (3) carries a 4-letter code at byte 29: SSTA session start, STLG start lights, LGOT lights out.
+$tele = $null
+try {
+    $tele = New-Object Net.Sockets.UdpClient
+    $tele.Client.SetSocketOption('Socket', 'ReuseAddress', $true)
+    $tele.Client.Bind((New-Object Net.IPEndPoint([Net.IPAddress]::Any, $TelemetryPort)))
+} catch { Log "Telemetry port $TelemetryPort unavailable: $_"; $tele = $null }
+
+function Test-OnTrack {
+    if (-not $tele) { return $false }
+    $ep = New-Object Net.IPEndPoint([Net.IPAddress]::Any, 0); $hit = $false
+    while ($tele.Available -gt 0) {
+        try { $b = $tele.Receive([ref]$ep) } catch { break }
+        if ($b.Length -lt 33) { continue }
+        if ($b[6] -eq 0) { $hit = $true }
+        elseif ($b[6] -eq 3 -and [Text.Encoding]::ASCII.GetString($b, 29, 4) -in 'SSTA', 'STLG', 'LGOT') { $hit = $true }
+    }
+    $hit
+}
+
 function Show-Intro($game) {
     if (-not $IntroVideo) { return }
-    $script:intro = New-VideoWindow $IntroVideo "Loading $game…"
+    [void](Test-OnTrack)                          # throw away anything left over from the last race
+    $script:intro = New-VideoWindow $IntroVideo 'Get ready to race…'
+    $script:intro.ShowActivated = $false          # keep keyboard/wheel focus on the game, not the video
     $script:introStart = Get-Date
     $script:intro.Show()
 }
 function Update-Intro {
     if (-not $script:intro) { return }
     $elapsed = ((Get-Date) - $script:introStart).TotalSeconds
-    $gameUp  = Get-Process | Where-Object { $_.Name -match $GameProcess -and $_.MainWindowHandle -ne 0 }
-    if (($gameUp -and $elapsed -ge 8) -or $elapsed -ge $IntroMaxSeconds) {
+    if ((Test-OnTrack) -or $elapsed -ge $IntroMaxSeconds -or -not $tele) {
+        if ($elapsed -ge $IntroMaxSeconds) { Log 'Intro video timed out - no on-track signal from F1' }
         Close-Video $script:intro; $script:intro = $null
     }
 }
@@ -292,7 +317,7 @@ $multi.Add_Click({ Start-Race 'Multiplayer' })
 
 # Every 3s: check wheel, talk to the other rigs, refresh screen, bring launcher back after a race
 $script:tick = 0
-$timer = New-Object Windows.Forms.Timer -Property @{ Interval = 2000 }
+$timer = New-Object Windows.Forms.Timer -Property @{ Interval = 1000 }
 $timer.Add_Tick({
     $script:tick++
     if ($script:racing) {
@@ -303,7 +328,8 @@ $timer.Add_Tick({
                 $form.WindowState = 'Maximized'; $form.TopMost = $true; $form.Activate(); Set-Status
             }
         } else { $script:launchSeen = $true }
-    } elseif ($script:tick % 2 -eq 0) { Set-Status }
+    } elseif ($script:tick % 5 -eq 0) { Set-Status }
+    if ($script:tick % 3 -ne 0) { return }
     Send-Beacon; Read-Beacons
     if (-not $script:racing) {
         Update-RigBar; Update-Buttons
@@ -331,5 +357,5 @@ $form.Add_KeyDown({
 })
 
 $form.Add_Shown({ Set-Status; Send-Beacon; Update-RigBar; Update-Buttons; $timer.Start() })
-$form.Add_FormClosed({ $timer.Stop(); $udp.Close() })
+$form.Add_FormClosed({ $timer.Stop(); $udp.Close(); if ($tele) { $tele.Close() } })
 [Windows.Forms.Application]::Run($form)
