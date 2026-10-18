@@ -7,13 +7,16 @@
 
 Installs to `C:\F1Arcade`, and creates a **`F1 Arcade Media`** folder on the desktop for your branding:
 
-| File | What it's for |
+**Just drop any video (.mp4) into the folder and it plays** – for both the idle screen and the loading screen. No renaming needed.
+
+Optional extras:
+| File name | What it's for |
 |---|---|
-| `attract.mp4` | idle video when nobody is playing |
-| `intro.mp4` | loading video (uses `attract.mp4` if missing) |
+| `attract.mp4` | use a specific video for the idle screen |
+| `intro.mp4` | use a different video for the loading screen |
 | `logo.png` | your logo in the top banner of the home screen |
 
-Swap these files any time – videos change on the next play, the logo on the next restart. Keep the exact names.
+Swap files any time – videos change on the next play, the logo on the next restart. If there are several unnamed videos, the first one alphabetically is used.
 
  Run `Install.bat` again any time to update – your settings and video are kept.
 The video plays full screen after the idle time; touching the screen, clicking or pressing a key returns to the home screen.

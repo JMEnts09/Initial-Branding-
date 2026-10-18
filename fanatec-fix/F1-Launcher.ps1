@@ -47,7 +47,15 @@ function Get-Media($name) {
         if ($f) { return $f }
     }
 }
-function Get-IntroVideo { $v = Get-Media 'intro'; if ($v) { $v } else { Get-Media 'attract' } }
+# Any video file in the folder works - names are optional.
+# If files are named attract / intro those are used for idle / loading; otherwise the first video plays for both.
+function Get-AnyVideo {
+    Get-ChildItem $MediaDir -File -ErrorAction SilentlyContinue |
+        Where-Object Extension -in '.mp4', '.wmv', '.mov', '.avi', '.m4v' |
+        Sort-Object Name | Select-Object -First 1 -ExpandProperty FullName
+}
+function Get-AttractVideo { $v = Get-Media 'attract'; if ($v) { $v } else { Get-AnyVideo } }
+function Get-IntroVideo   { $v = Get-Media 'intro';   if ($v) { $v } else { Get-AttractVideo } }
 $IntroMaxSeconds = 600                           # safety: stop the intro after 10 min even if no on-track signal
 $MenuDelay       = 15                            # seconds after F1's window appears before the video hides for staff
 $TrackVideoKey   = 0x78                          # F9: staff press after starting a session -> video until the car is on track
@@ -112,7 +120,7 @@ function New-VideoWindow($path, $caption) {
 function Close-Video($w) { if ($w) { $w.Tag.Stop(); $w.Close() } }
 
 function Show-Attract {
-    $video = Get-Media 'attract'
+    $video = Get-AttractVideo
     if (-not $video -or $script:attract) { return }
     $script:attract = New-VideoWindow $video 'TOUCH ANYWHERE TO PLAY'
     $close = { if ($script:attract) { Close-Video $script:attract; $script:attract = $null; $form.Activate() } }
