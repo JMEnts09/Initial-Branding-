@@ -60,6 +60,10 @@ Write-Host "`nRegistering launcher to start at login..." -ForegroundColor Yellow
 
 Write-Host "`nDONE - installed to $dest as PC$($cfg.CarNumber)." -ForegroundColor Green
 Write-Host "Branding folder: $media  (attract.mp4, intro.mp4, logo.png)"
+# Desktop shortcut to start the launcher by hand (shows any error message)
+$bat = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Start F1 Launcher.bat'
+Set-Content $bat "@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Minimized -File `"$dest\F1-Launcher.ps1`"`r`n" -Encoding ASCII
+Write-Host "Desktop shortcut created: Start F1 Launcher" 
 Start-Process explorer.exe $media
 Write-Host 'Make sure Windows logs in automatically (run "netplwiz"), then restart the PC.'
 Read-Host "`nPress Enter to close"

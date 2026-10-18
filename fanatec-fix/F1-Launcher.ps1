@@ -65,6 +65,15 @@ $FanatecVid = 'VID_0EB7'
 $log = Join-Path $PSScriptRoot 'fanatec-log.txt'
 function Log($m) { Add-Content $log "$(Get-Date -f s)  PC$CarNumber  $m" }
 
+# Any startup error is written to the log and shown on screen instead of the launcher silently vanishing
+trap {
+    $msg = "Launcher error at line $($_.InvocationInfo.ScriptLineNumber): $($_.Exception.Message)"
+    Log $msg
+    Add-Type -AssemblyName System.Windows.Forms
+    [void][System.Windows.Forms.MessageBox]::Show("$msg`n`nPlease send a photo of this to support.", 'F1 Arcade Launcher')
+    exit 1
+}
+
 if ($Install) {
     $a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$PSCommandPath`""
     $p = New-ScheduledTaskPrincipal -UserId $env:USERNAME -RunLevel Highest -LogonType Interactive
