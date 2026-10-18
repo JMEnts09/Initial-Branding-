@@ -84,6 +84,7 @@ function New-VideoWindow($path, $caption) {
     $m.Source = [Uri]$path; $m.LoadedBehavior = 'Manual'; $m.Stretch = 'UniformToFill'
     $m.Add_MediaEnded({ $this.Position = [TimeSpan]::Zero; $this.Play() })
     $tb = New-Object System.Windows.Controls.TextBlock
+    if (-not $caption) { $tb.Visibility = 'Collapsed' }
     $tb.Text = $caption; $tb.FontSize = 54; $tb.FontWeight = [System.Windows.FontWeights]::Bold
     $tb.Foreground = [System.Windows.Media.Brushes]::White; $tb.HorizontalAlignment = 'Center'; $tb.VerticalAlignment = 'Bottom'
     $tb.Margin = New-Object System.Windows.Thickness(0, 0, 0, 60)
@@ -125,21 +126,73 @@ function Test-OnTrack {
     $hit
 }
 
+$LoadingTips = @(
+    'F1 is loading in the background – your race starts automatically',
+    'Use the paddles behind the wheel to change gear',
+    'Brake in a straight line, then turn in',
+    'Smooth on the throttle out of corners – the wheel will fight back!',
+    'Keep both hands on the wheel at all times'
+)
+
 function Show-Intro($game) {
     if (-not $IntroVideo) { return }
     [void](Test-OnTrack)                          # throw away anything left over from the last race
-    $script:intro = New-VideoWindow $IntroVideo 'Get ready to race…'
+    $script:intro = New-VideoWindow $IntroVideo ''
     $script:intro.ShowActivated = $false          # keep keyboard/wheel focus on the game, not the video
+    $grid = $script:intro.Content
+
+    # Loading panel over the video: stage, tip, skip hint
+    $bg = New-Object System.Windows.Controls.Border
+    $bg.Background = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromArgb(190, 0, 0, 0))
+    $bg.VerticalAlignment = 'Bottom'; $bg.Padding = New-Object System.Windows.Thickness(40, 30, 40, 30)
+    $stack = New-Object System.Windows.Controls.StackPanel
+    $mk = { param($size, $bold, $colour)
+        $t = New-Object System.Windows.Controls.TextBlock
+        $t.FontSize = $size; $t.HorizontalAlignment = 'Center'; $t.TextWrapping = 'Wrap'; $t.TextAlignment = 'Center'
+        $t.Foreground = $colour
+        if ($bold) { $t.FontWeight = [System.Windows.FontWeights]::Bold }
+        [void]$stack.Children.Add($t); $t }
+    $script:introStage = & $mk 50 $true  ([System.Windows.Media.Brushes]::White)
+    $bar = New-Object System.Windows.Controls.ProgressBar
+    $bar.IsIndeterminate = $true; $bar.Height = 10; $bar.Width = 700; $bar.Margin = New-Object System.Windows.Thickness(0, 18, 0, 18)
+    $bar.Foreground = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromRgb(225, 6, 0))
+    [void]$stack.Children.Add($bar)
+    $script:introTip   = & $mk 30 $false ([System.Windows.Media.Brushes]::Gainsboro)
+    $skip = & $mk 22 $false ([System.Windows.Media.Brushes]::Gray)
+    $skip.Text = 'Tap the screen to skip the video and watch the game load'
+    $skip.Margin = New-Object System.Windows.Thickness(0, 20, 0, 0)
+    $bg.Child = $stack
+    [void]$grid.Children.Add($bg)
+
+    $script:intro.Add_PreviewMouseDown({ Log 'Intro skipped'; Close-Video $script:intro; $script:intro = $null })
+    $script:intro.Add_PreviewTouchDown({ Log 'Intro skipped'; Close-Video $script:intro; $script:intro = $null })
+
+    $script:introGame  = $game
     $script:introStart = Get-Date
+    Set-IntroText
     $script:intro.Show()
 }
+
+function Set-IntroText {
+    $elapsed = ((Get-Date) - $script:introStart).TotalSeconds
+    $running = Get-Process | Where-Object Name -match $GameProcess
+    $script:introStage.Text = if (-not $running) { "Starting $($script:introGame)…" }
+                              elseif (-not ($running | Where-Object MainWindowHandle -ne 0)) { "Loading $($script:introGame)…" }
+                              else { 'Heading to the track…' }
+    $script:introTip.Text = $LoadingTips[[int]($elapsed / 6) % $LoadingTips.Count]
+}
+
 function Update-Intro {
     if (-not $script:intro) { return }
     $elapsed = ((Get-Date) - $script:introStart).TotalSeconds
-    if ((Test-OnTrack) -or $elapsed -ge $IntroMaxSeconds -or -not $tele) {
+    # No telemetry socket: fall back to closing once the game window has been up a little while
+    $fallback = -not $tele -and $elapsed -ge 20 -and (Get-Process | Where-Object { $_.Name -match $GameProcess -and $_.MainWindowHandle -ne 0 })
+    if ((Test-OnTrack) -or $fallback -or $elapsed -ge $IntroMaxSeconds) {
         if ($elapsed -ge $IntroMaxSeconds) { Log 'Intro video timed out - no on-track signal from F1' }
         Close-Video $script:intro; $script:intro = $null
+        return
     }
+    Set-IntroText
 }
 
 # ---------- LAN: every rig broadcasts "F1RIG|car|state" and listens for the others ----------

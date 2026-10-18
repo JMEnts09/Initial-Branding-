@@ -8,7 +8,7 @@
 
 Installs to `C:\F1Arcade`. Run `Install.bat` again any time to update – your settings and video are kept.
 The video plays full screen after the idle time; touching the screen, clicking or pressing a key returns to the home screen.
-When PLAY is pressed, an intro video (`intro.mp4`, or the idle video if there isn't one) plays full screen until the car is at the track, then the race screen appears.
+When PLAY is pressed, an intro video (`intro.mp4`, or the idle video if there isn't one) plays full screen until the car is at the track, then the race screen appears. A loading panel over the video shows what's happening (Starting → Loading → Heading to the track), driving tips, and a progress bar. Tapping the screen skips the video so players can watch F1 load.
 
 **Required once in F1 on each rig:** Settings → Telemetry Settings → **UDP Telemetry: On**, **UDP Broadcast: Off**, **UDP IP: 127.0.0.1**, **UDP Port: 20777**. (If SimHub also uses 20777, set SimHub to forward to another port, or change `$TelemetryPort`.)
 
