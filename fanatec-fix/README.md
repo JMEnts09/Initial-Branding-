@@ -1,5 +1,14 @@
 # Fanatec DD+ – stop dropouts & firmware corruption
 
+## ⚡ Quick install / update (do this on each rig)
+1. Download this folder (GitHub → Code → Download ZIP → Extract All → open `fanatec-fix`).
+2. Optional: put your idle video in the folder named `attract.mp4`.
+3. Double-click **`Install.bat`**, click **Yes** on the admin prompt, answer the questions (car number, venue name, PIN, video, idle time).
+4. Restart the PC.
+
+Installs to `C:\F1Arcade`. Run `Install.bat` again any time to update – your settings and video are kept.
+The video plays full screen after the idle time; touching the screen, clicking or pressing a key returns to the home screen.
+
 ## 1. Run the script (once, as Administrator)
 ```
 powershell -ExecutionPolicy Bypass -File .\Fanatec-Stabilise.ps1

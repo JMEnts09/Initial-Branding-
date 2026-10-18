@@ -4,6 +4,7 @@
   - LAN rig bar: shows every car on the network and whether it is Ready / Racing / Fault / Offline
   - SINGLE PLAYER: works whenever this car's wheel works (network not needed)
   - MULTIPLAYER: only lights up when this car + at least one other car on the LAN are ready
+  - Attract video: loops attract.mp4 (in this folder) when nobody has touched the screen for a while
   - Hidden staff menu (press F12, enter PIN)
 
   Install once on EACH rig (as Administrator), after setting $CarNumber:
@@ -21,7 +22,19 @@ $Games = [ordered]@{
 }                                                # EA app: use the full path to the game .exe
 $GameProcess = 'F1_2*|F1_25|F1_24'               # process names, so the launcher hides while racing
 $UdpPort     = 47800                             # same on every rig
+$IdleSeconds = 60                                # play the attract video after this long with no touch/mouse/keys
 # ============================================
+
+# Values saved by Install.ps1 override the defaults above
+$cfgPath = Join-Path $PSScriptRoot 'settings.json'
+if (Test-Path $cfgPath) {
+    $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
+    if ($cfg.CarNumber)   { $CarNumber   = [int]$cfg.CarNumber }
+    if ($cfg.VenueName)   { $VenueName   = $cfg.VenueName }
+    if ($cfg.StaffPin)    { $StaffPin    = $cfg.StaffPin }
+    if ($cfg.IdleSeconds) { $IdleSeconds = [int]$cfg.IdleSeconds }
+}
+$AttractVideo = Get-ChildItem $PSScriptRoot -Filter 'attract.*' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
 
 $FanatecVid = 'VID_0EB7'
 $log = Join-Path $PSScriptRoot 'fanatec-log.txt'
@@ -37,8 +50,42 @@ if ($Install) {
     Write-Host "Installed as CAR $CarNumber. The launcher will open every time this user logs in."; exit
 }
 
-Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+Add-Type -AssemblyName System.Windows.Forms, System.Drawing, PresentationFramework, PresentationCore, WindowsBase
 [Windows.Forms.Application]::EnableVisualStyles()
+Add-Type @'
+using System; using System.Runtime.InteropServices;
+public static class IdleTime {
+    [StructLayout(LayoutKind.Sequential)] struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
+    [DllImport("user32.dll")] static extern bool GetLastInputInfo(ref LASTINPUTINFO p);
+    public static uint Seconds() {
+        var l = new LASTINPUTINFO(); l.cbSize = (uint)Marshal.SizeOf(l); GetLastInputInfo(ref l);
+        return ((uint)Environment.TickCount - l.dwTime) / 1000;
+    }
+}
+'@
+
+# ---------- attract video: loops full screen when idle, any touch/click/key returns to the home screen ----------
+$script:attract = $null
+function Show-Attract {
+    if (-not $AttractVideo -or $script:attract) { return }
+    $w = New-Object System.Windows.Window
+    $w.WindowStyle = 'None'; $w.WindowState = 'Maximized'; $w.ResizeMode = 'NoResize'; $w.Topmost = $true
+    $w.Background = [System.Windows.Media.Brushes]::Black
+    $grid = New-Object System.Windows.Controls.Grid
+    $script:media = New-Object System.Windows.Controls.MediaElement
+    $script:media.Source = [Uri]$AttractVideo; $script:media.LoadedBehavior = 'Manual'; $script:media.Stretch = 'UniformToFill'
+    $script:media.Add_MediaEnded({ $script:media.Position = [TimeSpan]::Zero; $script:media.Play() })
+    $tb = New-Object System.Windows.Controls.TextBlock
+    $tb.Text = 'TOUCH ANYWHERE TO PLAY'; $tb.FontSize = 54; $tb.FontWeight = [System.Windows.FontWeights]::Bold
+    $tb.Foreground = [System.Windows.Media.Brushes]::White; $tb.HorizontalAlignment = 'Center'; $tb.VerticalAlignment = 'Bottom'
+    $tb.Margin = New-Object System.Windows.Thickness(0, 0, 0, 60)
+    [void]$grid.Children.Add($script:media); [void]$grid.Children.Add($tb)
+    $w.Content = $grid
+    $close = { if ($script:attract) { $script:media.Stop(); $script:attract.Close(); $script:attract = $null; $form.Activate() } }
+    $w.Add_PreviewMouseDown($close); $w.Add_PreviewKeyDown($close); $w.Add_PreviewTouchDown($close)
+    $script:attract = $w
+    $w.Show(); $script:media.Play()
+}
 
 # ---------- wheel logic ----------
 function Test-Wheel {
@@ -239,7 +286,10 @@ $timer.Add_Tick({
         } else { $script:launchSeen = $true }
     } elseif ($script:tick % 2 -eq 0) { Set-Status }
     Send-Beacon; Read-Beacons
-    if (-not $script:racing) { Update-RigBar; Update-Buttons }
+    if (-not $script:racing) {
+        Update-RigBar; Update-Buttons
+        if ([IdleTime]::Seconds() -ge $IdleSeconds) { Show-Attract }
+    }
 })
 
 # Staff menu
