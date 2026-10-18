@@ -4,7 +4,7 @@
   - LAN rig bar: shows every car on the network and whether it is Ready / Racing / Fault / Offline
   - SINGLE PLAYER: works whenever this car's wheel works (network not needed)
   - MULTIPLAYER: only lights up when this car + at least one other car on the LAN are ready
-  - Attract video: loops attract.mp4 (in this folder) when nobody has touched the screen for a while
+  - Attract video: loops attract.mp4 (Desktop\\F1 Arcade Media) when nobody has touched the screen for a while
   - Intro video: plays while F1 boots, hides at the menus so staff can set up the race,
     then staff press F9 after starting the session and it plays again until the car is on track
   - Hidden staff menu (press F12, enter PIN)
@@ -36,10 +36,18 @@ if (Test-Path $cfgPath) {
     if ($cfg.StaffPin)    { $StaffPin    = $cfg.StaffPin }
     if ($cfg.IdleSeconds) { $IdleSeconds = [int]$cfg.IdleSeconds }
 }
-$AttractVideo = Get-ChildItem $PSScriptRoot -Filter 'attract.*' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
-# Intro video plays while F1 loads; uses intro.* if present, otherwise the attract video
-$IntroVideo   = Get-ChildItem $PSScriptRoot -Filter 'intro.*' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
-if (-not $IntroVideo) { $IntroVideo = $AttractVideo }
+# Branding folder on the desktop - staff can swap these files any time, no reinstall needed:
+#   attract.mp4  idle video          intro.mp4  loading video (falls back to attract)
+#   logo.png     shown in the top banner on the home screen
+$MediaDir = Join-Path ([Environment]::GetFolderPath('Desktop')) 'F1 Arcade Media'
+New-Item $MediaDir -ItemType Directory -Force | Out-Null
+function Get-Media($name) {
+    foreach ($dir in $MediaDir, $PSScriptRoot) {
+        $f = Get-ChildItem $dir -Filter "$name.*" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+        if ($f) { return $f }
+    }
+}
+function Get-IntroVideo { $v = Get-Media 'intro'; if ($v) { $v } else { Get-Media 'attract' } }
 $IntroMaxSeconds = 600                           # safety: stop the intro after 10 min even if no on-track signal
 $MenuDelay       = 15                            # seconds after F1's window appears before the video hides for staff
 $TrackVideoKey   = 0x78                          # F9: staff press after starting a session -> video until the car is on track
@@ -104,8 +112,9 @@ function New-VideoWindow($path, $caption) {
 function Close-Video($w) { if ($w) { $w.Tag.Stop(); $w.Close() } }
 
 function Show-Attract {
-    if (-not $AttractVideo -or $script:attract) { return }
-    $script:attract = New-VideoWindow $AttractVideo 'TOUCH ANYWHERE TO PLAY'
+    $video = Get-Media 'attract'
+    if (-not $video -or $script:attract) { return }
+    $script:attract = New-VideoWindow $video 'TOUCH ANYWHERE TO PLAY'
     $close = { if ($script:attract) { Close-Video $script:attract; $script:attract = $null; $form.Activate() } }
     $script:attract.Add_PreviewMouseDown($close); $script:attract.Add_PreviewKeyDown($close); $script:attract.Add_PreviewTouchDown($close)
     $script:attract.Show()
@@ -145,10 +154,11 @@ $LoadingTips = @(
 #   boot  - from PLAY until F1 reaches its menus (video hides so staff can see them)
 #   track - staff press F9 after starting the session; video until the car is on track
 function Show-Intro($game, $mode = 'boot') {
-    if (-not $IntroVideo -or $script:intro) { return }
+    $video = Get-IntroVideo
+    if (-not $video -or $script:intro) { return }
     $script:introMode = $mode
     [void](Test-OnTrack)                          # throw away anything left over from the last race
-    $script:intro = New-VideoWindow $IntroVideo ''
+    $script:intro = New-VideoWindow $video ''
     $script:intro.ShowActivated = $false          # keep keyboard/wheel focus on the game, not the video
     $grid = $script:intro.Content
 
@@ -252,6 +262,11 @@ $form = New-Object Windows.Forms.Form -Property @{
 $top = New-Object Windows.Forms.Panel -Property @{ Dock = 'Top'; Height = 130; BackColor = $red }
 $top.Controls.Add((New-Object Windows.Forms.Label -Property @{
     Text = "$VenueName   ·   CAR $CarNumber"; Dock = 'Fill'; TextAlign = 'MiddleCenter'; ForeColor = 'White'; Font = (F 44) }))
+$logo = Get-Media 'logo'
+if ($logo -and $logo -match '\.(png|jpg|jpeg|bmp|gif)$') {
+    $top.Controls.Add((New-Object Windows.Forms.PictureBox -Property @{
+        Dock = 'Left'; Width = 320; SizeMode = 'Zoom'; Padding = '20,10,20,10'; Image = [Drawing.Image]::FromFile($logo) }))
+}
 
 $layout = New-Object Windows.Forms.TableLayoutPanel -Property @{ Dock = 'Fill'; ColumnCount = 1; RowCount = 4; Padding = '60,30,60,30' }
 foreach ($pct in 22, 13, 20, 45) { [void]$layout.RowStyles.Add((New-Object Windows.Forms.RowStyle('Percent', $pct))) }

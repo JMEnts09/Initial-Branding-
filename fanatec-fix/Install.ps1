@@ -33,9 +33,15 @@ $cfg.StaffPin    = Ask 'Staff PIN (F12 menu)' $cfg.StaffPin
 $cfg.IdleSeconds = [int](Ask 'Seconds of no use before the video plays' $cfg.IdleSeconds)
 $cfg | ConvertTo-Json | Set-Content $cfgPath
 
+# Branding folder on the desktop (videos + logo) - staff can swap files here any time
+$media = Join-Path ([Environment]::GetFolderPath('Desktop')) 'F1 Arcade Media'
+New-Item $media -ItemType Directory -Force | Out-Null
+Get-ChildItem $dest -Include 'attract.*', 'intro.*' -File -Recurse -ErrorAction SilentlyContinue | Move-Item -Destination $media -Force
+Get-ChildItem $src -Filter 'logo.*' -ErrorAction SilentlyContinue | Copy-Item -Destination $media -Force
+
 # Attract video
 $bundled = Get-ChildItem $src -Filter 'attract.*' -ErrorAction SilentlyContinue | Select-Object -First 1
-$current = Get-ChildItem $dest -Filter 'attract.*' -ErrorAction SilentlyContinue | Select-Object -First 1
+$current = Get-ChildItem $media -Filter 'attract.*' -ErrorAction SilentlyContinue | Select-Object -First 1
 $prompt  = if ($current) { "Video file to play when idle (drag it here, Enter to keep $($current.Name))" }
            elseif ($bundled) { "Video file to play when idle (drag it here, Enter to use $($bundled.Name))" }
            else { 'Video file to play when idle (drag it here, Enter for none)' }
@@ -43,19 +49,19 @@ $v = (Read-Host $prompt).Trim('"', ' ')
 if (-not $v -and -not $current -and $bundled) { $v = $bundled.FullName }
 if ($v) {
     if (Test-Path $v) {
-        Get-ChildItem $dest -Filter 'attract.*' | Remove-Item -Force
-        Copy-Item $v (Join-Path $dest ('attract' + [IO.Path]::GetExtension($v))) -Force
+        Get-ChildItem $media -Filter 'attract.*' | Remove-Item -Force
+        Copy-Item $v (Join-Path $media ('attract' + [IO.Path]::GetExtension($v))) -Force
         Write-Host 'Video installed.' -ForegroundColor Green
     } else { Write-Warning "Video not found: $v" }
 }
 
 # Intro video (plays while F1 loads). Enter = use the idle video for this too
-$curIntro = Get-ChildItem $dest -Filter 'intro.*' -ErrorAction SilentlyContinue | Select-Object -First 1
+$curIntro = Get-ChildItem $media -Filter 'intro.*' -ErrorAction SilentlyContinue | Select-Object -First 1
 $iv = (Read-Host ("Video to play while F1 loads (drag it here, Enter to " + $(if ($curIntro) { "keep $($curIntro.Name)" } else { 'use the idle video' }) + ")")).Trim('"', ' ')
 if ($iv) {
     if (Test-Path $iv) {
-        Get-ChildItem $dest -Filter 'intro.*' | Remove-Item -Force
-        Copy-Item $iv (Join-Path $dest ('intro' + [IO.Path]::GetExtension($iv))) -Force
+        Get-ChildItem $media -Filter 'intro.*' | Remove-Item -Force
+        Copy-Item $iv (Join-Path $media ('intro' + [IO.Path]::GetExtension($iv))) -Force
         Write-Host 'Intro video installed.' -ForegroundColor Green
     } else { Write-Warning "Video not found: $iv" }
 }
@@ -67,5 +73,7 @@ Write-Host "`nRegistering launcher to start at login..." -ForegroundColor Yellow
 & (Join-Path $dest 'F1-Launcher.ps1') -Install
 
 Write-Host "`nDONE - installed to $dest as CAR $($cfg.CarNumber)." -ForegroundColor Green
+Write-Host "Branding folder: $media  (attract.mp4, intro.mp4, logo.png)"
+Start-Process explorer.exe $media
 Write-Host 'Make sure Windows logs in automatically (run "netplwiz"), then restart the PC.'
 Read-Host "`nPress Enter to close"

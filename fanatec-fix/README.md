@@ -2,11 +2,20 @@
 
 ## ⚡ Quick install / update (do this on each rig)
 1. Download this folder (GitHub → Code → Download ZIP → Extract All → open `fanatec-fix`).
-2. Optional: put your idle video in the folder named `attract.mp4`.
 3. Double-click **`Install.bat`**, click **Yes** on the admin prompt, answer the questions (car number, venue name, PIN, video, idle time).
 4. Restart the PC.
 
-Installs to `C:\F1Arcade`. Run `Install.bat` again any time to update – your settings and video are kept.
+Installs to `C:\F1Arcade`, and creates a **`F1 Arcade Media`** folder on the desktop for your branding:
+
+| File | What it's for |
+|---|---|
+| `attract.mp4` | idle video when nobody is playing |
+| `intro.mp4` | loading video (uses `attract.mp4` if missing) |
+| `logo.png` | your logo in the top banner of the home screen |
+
+Swap these files any time – videos change on the next play, the logo on the next restart. Keep the exact names.
+
+ Run `Install.bat` again any time to update – your settings and video are kept.
 The video plays full screen after the idle time; touching the screen, clicking or pressing a key returns to the home screen.
 When PLAY is pressed, an intro video (`intro.mp4`, or the idle video if there isn't one) plays full screen in two parts: (1) while F1 boots – it hides when F1 reaches its menus so staff can set up the race; (2) staff press **F9** after starting the session and it plays again until the car is at the track, then the race screen appears. A loading panel over the video shows what's happening (Starting → Loading → Heading to the track), driving tips, and a progress bar. Tapping the screen skips the video so players can watch F1 load.
 
