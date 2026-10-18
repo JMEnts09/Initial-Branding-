@@ -1,9 +1,9 @@
 <#
   F1-Launcher.ps1  -  Arcade home screen for F1 sim rigs
-  - Live Fanatec wheel status (checks every few seconds, auto-repairs dropouts)
-  - LAN rig bar: shows every car on the network and whether it is Ready / Racing / Fault / Offline
-  - SINGLE PLAYER: works whenever this car's wheel works (network not needed)
-  - MULTIPLAYER: only lights up when this car + at least one other car on the LAN are ready
+  - Boot sequence: PC connected -> wheel testing (detect, turn the wheel, press the pedals)
+    -> "Wheel connected and ready to go". Auto-repairs dropouts.
+  - LAN: shows "PC2 connected", "PC3 connected" ... with a green light (never IP addresses)
+  - SINGLE PLAYER always; MULTIPLAYER only appears when another PC is connected
   - Attract video: loops attract.mp4 (Desktop\\F1 Arcade Media) when nobody has touched the screen for a while
   - Intro video: plays while F1 boots, hides at the menus so staff can set up the race,
     then staff press F9 after starting the session and it plays again until the car is on track
@@ -15,7 +15,7 @@
 param([switch]$Install)
 
 # ================= SETTINGS =================
-$CarNumber = 1                                   # UNIQUE per rig: 1, 2, 3 ...
+$CarNumber = 1                                   # UNIQUE per rig: 1, 2, 3 ...  (shown as PC1, PC2 ...)
 $VenueName = 'F1 RACING EXPERIENCE'
 $StaffPin  = '1234'                              # CHANGE THIS
 $Games = [ordered]@{
@@ -63,7 +63,7 @@ $TelemetryPort   = 20777                         # F1 in-game: Settings > Teleme
 
 $FanatecVid = 'VID_0EB7'
 $log = Join-Path $PSScriptRoot 'fanatec-log.txt'
-function Log($m) { Add-Content $log "$(Get-Date -f s)  CAR $CarNumber  $m" }
+function Log($m) { Add-Content $log "$(Get-Date -f s)  PC$CarNumber  $m" }
 
 if ($Install) {
     $a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$PSCommandPath`""
@@ -72,13 +72,39 @@ if ($Install) {
     Unregister-ScheduledTask -TaskName 'Arcade Wheel Check' -Confirm:$false -ErrorAction SilentlyContinue
     Remove-NetFirewallRule -DisplayName 'F1 Arcade Launcher LAN' -ErrorAction SilentlyContinue
     New-NetFirewallRule -DisplayName 'F1 Arcade Launcher LAN' -Direction Inbound -Protocol UDP -LocalPort $UdpPort -Action Allow -Profile Any | Out-Null
-    Write-Host "Installed as CAR $CarNumber. The launcher will open every time this user logs in."; exit
+    Write-Host "Installed as PC$CarNumber. The launcher will open every time this user logs in."; exit
 }
 
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing, PresentationFramework, PresentationCore, WindowsBase
 [Windows.Forms.Application]::EnableVisualStyles()
 Add-Type @'
 using System; using System.Runtime.InteropServices;
+// Reads every game controller's axes through winmm (no extra drivers). Fanatec devices only, if any are found.
+public static class Joy {
+    [StructLayout(LayoutKind.Sequential)] struct JOYINFOEX {
+        public int dwSize, dwFlags, X, Y, Z, R, U, V, dwButtons, dwButtonNumber, dwPOV, r1, r2; }
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] struct JOYCAPS {
+        public ushort wMid, wPid;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string szPname;
+        public int wXmin, wXmax, wYmin, wYmax, wZmin, wZmax, wNumButtons, wPeriodMin, wPeriodMax,
+                   wRmin, wRmax, wUmin, wUmax, wVmin, wVmax, wCaps, wMaxAxes, wNumAxes, wMaxButtons;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string szRegKey;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string szOEMVxD; }
+    [DllImport("winmm.dll")] static extern int joyGetPosEx(int id, ref JOYINFOEX ji);
+    [DllImport("winmm.dll", CharSet = CharSet.Unicode)] static extern int joyGetDevCapsW(IntPtr id, ref JOYCAPS jc, int size);
+    public static int[][] Read(ushort vid) {
+        var fan = new System.Collections.Generic.List<int[]>(); var all = new System.Collections.Generic.List<int[]>();
+        for (int id = 0; id < 16; id++) {
+            var c = new JOYCAPS();
+            if (joyGetDevCapsW((IntPtr)id, ref c, Marshal.SizeOf(c)) != 0) continue;
+            var j = new JOYINFOEX(); j.dwSize = Marshal.SizeOf(j); j.dwFlags = 0xFF;
+            if (joyGetPosEx(id, ref j) != 0) continue;
+            var axes = new int[] { j.X, j.Y, j.Z, j.R, j.U, j.V };
+            all.Add(axes); if (c.wMid == vid) fan.Add(axes);
+        }
+        return (fan.Count > 0 ? fan : all).ToArray();
+    }
+}
 public static class StaffKey {
     [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vKey);
     public static bool Pressed(int vKey) { return (GetAsyncKeyState(vKey) & 0x8001) != 0; }
@@ -277,7 +303,7 @@ $form = New-Object Windows.Forms.Form -Property @{
 
 $top = New-Object Windows.Forms.Panel -Property @{ Dock = 'Top'; Height = 130; BackColor = $red }
 $top.Controls.Add((New-Object Windows.Forms.Label -Property @{
-    Text = "$VenueName   ·   CAR $CarNumber"; Dock = 'Fill'; TextAlign = 'MiddleCenter'; ForeColor = 'White'; Font = (F 44) }))
+    Text = "$VenueName   ·   PC$CarNumber"; Dock = 'Fill'; TextAlign = 'MiddleCenter'; ForeColor = 'White'; Font = (F 44) }))
 $logo = Get-Media 'logo'
 if ($logo -and $logo -match '\.(png|jpg|jpeg|bmp|gif)$') {
     $top.Controls.Add((New-Object Windows.Forms.PictureBox -Property @{
@@ -289,8 +315,9 @@ foreach ($pct in 22, 13, 20, 45) { [void]$layout.RowStyles.Add((New-Object Windo
 
 # Wheel status card
 $status = New-Object Windows.Forms.Label -Property @{
-    Dock = 'Fill'; TextAlign = 'MiddleCenter'; Font = (F 34); BackColor = $panel; ForeColor = 'White'
-    Text = 'Checking wheel…'; Margin = '200,10,200,10' }
+    Dock = 'Fill'; TextAlign = 'MiddleCenter'; Font = (F 30); BackColor = $panel; ForeColor = 'White'
+    Text = 'Starting…'; Margin = '150,10,150,10' }
+$status.Add_Click({ if ($script:phase -eq 'fault') { Log 'Wheel test restarted from screen'; Start-WheelTest } })
 $layout.Controls.Add($status, 0, 0)
 
 # LAN rig bar
@@ -301,22 +328,23 @@ $centreRigs = { $rigBar.Left = [int](($rigHost.Width - $rigBar.Width) / 2); $rig
 $rigHost.Add_Resize($centreRigs); $rigBar.Add_SizeChanged($centreRigs)
 $layout.Controls.Add($rigHost, 0, 1)
 
+function Get-ConnectedPeers { @($peers.Keys | Where-Object { (Get-PeerState $_) -ne 'offline' } | Sort-Object) }
+
 function Update-RigBar {
     $rigBar.SuspendLayout(); $rigBar.Controls.Clear()
-    $cars = @($CarNumber) + @($peers.Keys) | Sort-Object -Unique
-    foreach ($c in $cars) {
-        $s = if ($c -eq $CarNumber) { $script:state } else { Get-PeerState $c }
-        $txt, $col = switch ($s) {
-            'ready'  { '✔ Ready',   'LimeGreen' }
-            'racing' { '🏁 Racing', 'DeepSkyBlue' }
-            'repair' { '… Fixing',  'Orange' }
-            'fault'  { '✖ Fault',   $red }
-            default  { '● Offline', 'Gray' }
-        }
-        $name = if ($c -eq $CarNumber) { "CAR $c (this car)" } else { "CAR $c" }
+    $connected = Get-ConnectedPeers
+    if (-not (Test-Network) -or $connected.Count -eq 0) {
         $rigBar.Controls.Add((New-Object Windows.Forms.Label -Property @{
-            Text = "$name`n$txt"; ForeColor = $col; BackColor = $panel; Font = (F 16); TextAlign = 'MiddleCenter'
-            Width = 230; Height = 80; Margin = '10,0,10,0' }))
+            Text = 'No other PCs connected – single player'; ForeColor = 'Gray'; Font = (F 18 $false)
+            AutoSize = $true; Margin = '10,25,10,0' }))
+    } else {
+        foreach ($c in $connected) {
+            $detail = switch (Get-PeerState $c) {
+                'ready'   { 'ready to go' } 'racing' { 'racing' } 'testing' { 'wheel testing' } 'fault' { 'wheel fault' } default { '' } }
+            $rigBar.Controls.Add((New-Object Windows.Forms.Label -Property @{
+                Text = "●  PC$c connected`n$detail"; ForeColor = 'LimeGreen'; BackColor = $panel; Font = (F 18)
+                TextAlign = 'MiddleCenter'; Width = 280; Height = 85; Margin = '10,0,10,0' }))
+        }
     }
     $rigBar.ResumeLayout()
 }
@@ -350,59 +378,116 @@ $mkMode = { param($t) $b = New-Object Windows.Forms.Button -Property @{
     $b.FlatAppearance.BorderSize = 0; $b }
 $single = & $mkMode 'SINGLE PLAYER'
 $multi  = & $mkMode 'MULTIPLAYER'
+$multi.Visible = $false
+$modes.ColumnStyles[0].Width = 100; $modes.ColumnStyles[1].Width = 0
 $modes.Controls.Add($single, 0, 0); $modes.Controls.Add($multi, 1, 0)
 $layout.Controls.Add($modes, 0, 3)
 
 $foot = New-Object Windows.Forms.Label -Property @{
     Dock = 'Bottom'; Height = 40; ForeColor = 'Gray'; Font = (F 12 $false); TextAlign = 'MiddleCenter'
-    Text = 'Multiplayer: start on every car, then join the same lobby in F1's Multiplayer menu   ·   Staff: F12' }
+    Text = "Multiplayer: start on every PC, then join the same lobby in F1's Multiplayer menu   ·   Staff: F12" }
 
 $form.Controls.AddRange(@($layout, $foot, $top))
 
-# ---------- state ----------
+# ---------- state + boot wheel test ----------
+# phase: network -> detect -> steer -> pedal -> ready   (or fault)
 $script:fails  = 0
 $script:racing = $false
-$script:state  = 'repair'                         # ready | repair | fault | racing
+$script:phase  = 'network'
+$script:state  = 'testing'                        # what other PCs see: testing | ready | fault | racing
+$TestTimeout   = 120                              # seconds to wait for the wheel to be turned / pedals pressed
+$MoveThreshold = 6000                             # axis change (of 0-65535) that counts as movement
 
-function Set-Status {
-    if ($script:racing) { return }
-    if (Test-Wheel) {
-        if ($script:fails -gt 0) { Log 'Wheel detected and working' }
-        $script:fails = 0; $script:state = 'ready'
-        $status.Text = '✔  Wheel detected and working'; $status.ForeColor = 'LimeGreen'
-    } else {
-        $script:fails++
-        if ($script:fails -le 3) {
-            $script:state = 'repair'
-            $status.Text = "Reconnecting wheel…  ($($script:fails)/3)"; $status.ForeColor = 'Orange'
-            Update-Buttons; [Windows.Forms.Application]::DoEvents(); Repair-Wheel
-        } else {
-            if ($script:fails -eq 4) { Log 'WHEEL FAULT shown' }
-            $script:state = 'fault'
-            $status.Text = '✖  WHEEL FAULT – please call staff'; $status.ForeColor = $red
+function Start-WheelTest { $script:phase = 'network'; $script:phaseStart = Get-Date; $script:fails = 0; $script:steerDev = $null }
+function Set-Phase($p) { $script:phase = $p; $script:phaseStart = Get-Date; $script:base = [Joy]::Read(0x0EB7) }
+function Get-Moved($skipX) {
+    # returns the index of a device whose axis moved past the threshold, or $null
+    $now = [Joy]::Read(0x0EB7)
+    for ($d = 0; $d -lt [Math]::Min($now.Count, $script:base.Count); $d++) {
+        for ($a = 0; $a -lt 6; $a++) {
+            if ($a -eq 0 -and $skipX -contains $d) { continue }
+            if ($a -ne 0 -and $skipX -eq 'onlyX') { continue }
+            if ([Math]::Abs($now[$d][$a] - $script:base[$d][$a]) -gt $MoveThreshold) { return $d }
         }
     }
+    $null
+}
+function Show-Test($line, $colour) {
+    $tick = { param($done, $name) if ($done) { "✔ $name" } else { "○ $name" } }
+    $p = $script:phase
+    $checks = '{0}     {1}     {2}' -f (& $tick ($p -ne 'network') 'PC connected'),
+                                      (& $tick ($p -in 'pedal', 'ready') 'Steering'),
+                                      (& $tick ($p -eq 'ready') 'Pedals')
+    $status.Text = "$line`n`n$checks"; $status.ForeColor = $colour
+}
+
+function Step-WheelTest {
+    $elapsed = ((Get-Date) - $script:phaseStart).TotalSeconds
+    switch ($script:phase) {
+        'network' {
+            $script:state = 'testing'
+            if (Test-Network) { Show-Test '✔  PC connected' 'LimeGreen' } else { Show-Test 'PC ready – no network, single player only' 'Orange' }
+            if ($elapsed -ge 3) { Set-Phase 'detect' }
+        }
+        'detect' {
+            Show-Test 'Wheel testing…  looking for the wheel' 'White'
+            if ((Test-Wheel) -and [Joy]::Read(0x0EB7).Count -gt 0) { Log 'Wheel detected - testing steering'; Set-Phase 'steer' }
+            elseif ($elapsed -ge 8) {
+                $script:fails++
+                if ($script:fails -gt 3) { Set-Fault 'Wheel not detected' }
+                else { Show-Test "Reconnecting wheel…  ($($script:fails)/3)" 'Orange'; [Windows.Forms.Application]::DoEvents(); Repair-Wheel; Set-Phase 'detect' }
+            }
+        }
+        'steer' {
+            Show-Test 'Wheel testing…  turn the steering wheel left and right' 'Orange'
+            $d = Get-Moved 'onlyX'
+            if ($null -ne $d) { $script:steerDev = $d; Log 'Steering OK - testing pedals'; Set-Phase 'pedal' }
+            elseif ($elapsed -ge $TestTimeout) { Set-Fault 'Steering not responding' }
+        }
+        'pedal' {
+            Show-Test 'Wheel testing…  press the throttle and brake pedals' 'Orange'
+            if ($null -ne (Get-Moved @($script:steerDev))) { Log 'Pedals OK - ready'; Set-Phase 'ready' }
+            elseif ($elapsed -ge $TestTimeout) { Set-Fault 'Pedals not detected' }
+        }
+        'ready' {
+            $script:state = 'ready'
+            Show-Test '✔  Wheel connected and ready to go' 'LimeGreen'
+            if ($script:tick % 5 -eq 0 -and -not (Test-Wheel)) { Log 'Wheel lost - retesting'; $script:state = 'testing'; Set-Phase 'detect' }
+        }
+        'fault' { }
+    }
+}
+function Set-Fault($why) {
+    Log "WHEEL FAULT: $why"
+    $script:phase = 'fault'; $script:state = 'fault'
+    $status.Text = "✖  $why`n`nPlease call staff  –  tap here to test again"; $status.ForeColor = $red
 }
 
 function Update-Buttons {
-    $wheelOk = $script:state -eq 'ready'
-    $netOk   = Test-Network
-    $others  = @($peers.Keys | Where-Object { (Get-PeerState $_) -eq 'ready' }).Count
+    $wheelOk   = $script:phase -eq 'ready'
+    $connected = if (Test-Network) { Get-ConnectedPeers } else { @() }
+    $others    = @($connected | Where-Object { (Get-PeerState $_) -eq 'ready' }).Count
 
-    $single.Enabled = $wheelOk
-    $single.Text    = if ($wheelOk) { 'SINGLE PLAYER' } else { "SINGLE PLAYER`nUnavailable" }
+    $single.Enabled   = $wheelOk
+    $single.Text      = if ($wheelOk) { 'SINGLE PLAYER' } else { "SINGLE PLAYER`nWaiting for wheel test" }
     $single.BackColor = if ($wheelOk) { $red } else { $panel }
 
-    $multi.Enabled = $wheelOk -and $netOk -and $others -ge 1
-    $multi.Text = if (-not $wheelOk) { "MULTIPLAYER`nUnavailable" }
-                  elseif (-not $netOk) { "MULTIPLAYER`nNetwork not connected" }
-                  elseif ($others -lt 1) { "MULTIPLAYER`nWaiting for other cars" }
-                  else { "MULTIPLAYER`n$($others + 1) cars ready" }
+    # Multiplayer is removed from the screen entirely unless another PC is connected
+    $showMulti = $connected.Count -gt 0
+    if ($multi.Visible -ne $showMulti) {
+        $multi.Visible = $showMulti
+        $modes.ColumnStyles[0].Width = if ($showMulti) { 50 } else { 100 }
+        $modes.ColumnStyles[1].Width = if ($showMulti) { 50 } else { 0 }
+    }
+    $multi.Enabled = $wheelOk -and $others -ge 1
+    $multi.Text = if (-not $wheelOk) { "MULTIPLAYER`nWaiting for wheel test" }
+                  elseif ($others -lt 1) { "MULTIPLAYER`nWaiting for other PCs" }
+                  else { "MULTIPLAYER`n$($others + 1) PCs ready" }
     $multi.BackColor = if ($multi.Enabled) { $red } else { $panel }
 }
 
 function Start-Race($mode) {
-    if (-not (Test-Wheel)) { Set-Status; Update-Buttons; return }
+    if (-not (Test-Wheel)) { Log 'Wheel lost at PLAY - retesting'; Set-Phase 'detect'; Update-Buttons; return }
     Log "Launching $script:selected ($mode)"
     $script:racing = $true; $script:state = 'racing'; Send-Beacon
     $status.Text = "Launching $script:selected – $mode…"; $status.ForeColor = 'White'
@@ -418,7 +503,7 @@ function Start-Race($mode) {
 $single.Add_Click({ Start-Race 'Single Player' })
 $multi.Add_Click({ Start-Race 'Multiplayer' })
 
-# Every 3s: check wheel, talk to the other rigs, refresh screen, bring launcher back after a race
+# Every 1s: wheel test step; every 3s: talk to the other PCs, refresh screen, bring launcher back after a race
 $script:tick = 0
 $timer = New-Object Windows.Forms.Timer -Property @{ Interval = 1000 }
 $timer.Add_Tick({
@@ -429,14 +514,15 @@ $timer.Add_Tick({
         if (-not (Get-Process | Where-Object Name -match $GameProcess)) {
             if ($script:launchSeen) {
                 $script:racing = $false; $script:launchSeen = $false
-                $form.WindowState = 'Maximized'; $form.TopMost = $true; $form.Activate(); Set-Status
+                $form.WindowState = 'Maximized'; $form.TopMost = $true; $form.Activate()
+                $script:state = 'testing'; Set-Phase 'ready'
             }
         } else { $script:launchSeen = $true }
-    } elseif ($script:tick % 5 -eq 0) { Set-Status }
+    } else { Step-WheelTest; Update-Buttons }
     if ($script:tick % 3 -ne 0) { return }
     Send-Beacon; Read-Beacons
     if (-not $script:racing) {
-        Update-RigBar; Update-Buttons
+        Update-RigBar
         if ([IdleTime]::Seconds() -ge $IdleSeconds) { Show-Attract }
     }
 })
@@ -447,12 +533,12 @@ $form.Add_KeyDown({
     $pin = New-Object Windows.Forms.Form -Property @{ Text = 'Staff'; Width = 380; Height = 330; StartPosition = 'CenterScreen'; TopMost = $true; FormBorderStyle = 'FixedDialog' }
     $box = New-Object Windows.Forms.TextBox -Property @{ UseSystemPasswordChar = $true; Left = 20; Top = 20; Width = 320; Font = (F 16 $false) }
     $mk = { param($t, $y) New-Object Windows.Forms.Button -Property @{ Text = $t; Left = 20; Top = $y; Width = 320; Height = 45 } }
-    $bRetry = & $mk 'Re-check / repair wheel' 70
+    $bRetry = & $mk 'Run wheel test again' 70
     $bLog   = & $mk 'Open log' 120
     $bExit  = & $mk 'Exit launcher to Windows' 170
     $bOff   = & $mk 'Shut down PC' 220
     $guard = { if ($box.Text -ne $StaffPin) { [Windows.Forms.MessageBox]::Show('Wrong PIN'); return $false }; $true }
-    $bRetry.Add_Click({ if (& $guard) { $script:fails = 0; Repair-Wheel; $pin.Close(); Set-Status; Update-Buttons } })
+    $bRetry.Add_Click({ if (& $guard) { Log 'Staff restarted wheel test'; $pin.Close(); Repair-Wheel; Start-WheelTest } })
     $bLog.Add_Click({   if (& $guard) { $form.TopMost = $false; Start-Process notepad $log; $pin.Close() } })
     $bExit.Add_Click({  if (& $guard) { Log 'Staff exit'; $pin.Close(); $form.Close() } })
     $bOff.Add_Click({   if (& $guard) { Log 'Staff shutdown'; Stop-Computer -Force } })
@@ -460,6 +546,6 @@ $form.Add_KeyDown({
     [void]$pin.ShowDialog($form)
 })
 
-$form.Add_Shown({ Set-Status; Send-Beacon; Update-RigBar; Update-Buttons; $timer.Start() })
+$form.Add_Shown({ Start-WheelTest; Step-WheelTest; Send-Beacon; Update-RigBar; Update-Buttons; $timer.Start() })
 $form.Add_FormClosed({ $timer.Stop(); $udp.Close(); if ($tele) { $tele.Close() } })
 [Windows.Forms.Application]::Run($form)

@@ -66,10 +66,18 @@ Full-screen home screen with live wheel status, game picker (F1 25 / F1 24) and 
 
 Staff menu: press **F12**, enter the PIN → re-check/repair wheel, open log, exit to Windows, shut down PC.
 
+### Boot wheel test (every PC, every start-up)
+The status box walks through the checks, ticking each one off:
+1. **✔ PC connected** (or "no network – single player only")
+2. **Wheel testing… looking for the wheel** – auto-repairs if Windows can't see it
+3. **Wheel testing… turn the steering wheel left and right** → ✔ Steering
+4. **Wheel testing… press the throttle and brake pedals** → ✔ Pedals
+5. **✔ Wheel connected and ready to go** – the PLAY buttons unlock
+
+If a step isn't passed within 2 minutes it shows the fault in red (e.g. "Pedals not detected – please call staff"). Tap the box, or F12 → *Run wheel test again*, to retest.
+
 ### Multiplayer over LAN
-Every rig runs the launcher and they find each other automatically on the same network (UDP port 47800; `-Install` opens the firewall).
-1. In SETTINGS give each rig a **unique `$CarNumber`** (1, 2, 3 …) before running `-Install`.
-2. Home screen shows a bar of every car: **Ready / Racing / Fixing / Fault / Offline**.
-3. **SINGLE PLAYER** works whenever this car's wheel works – no network needed.
-4. **MULTIPLAYER** only lights up when the network is connected and at least one other car is ready ("3 cars ready"). Otherwise it says "Network not connected" or "Waiting for other cars".
-5. After pressing Multiplayer, players join the same lobby in F1's Multiplayer menu (F1 can't be auto-joined by outside software). Note: recent F1 games run multiplayer through EA's online servers, so the rigs also need internet for the race itself.
+Every PC runs the launcher and they find each other automatically (UDP port 47800; the installer opens the firewall). Give each PC a **unique number** when installing – it shows as PC1, PC2, PC3…
+- **No other PCs connected:** only **SINGLE PLAYER** is shown. Multiplayer is removed from the screen.
+- **Other PCs connected:** each shows as **● PC2 connected**, **● PC3 connected** with a green light (no IP addresses), plus whether it's wheel testing, ready to go or racing. **MULTIPLAYER** appears and unlocks once at least one other PC has passed its wheel test.
+- After pressing Multiplayer, staff join the same lobby in F1's Multiplayer menu. Recent F1 games run multiplayer through EA's servers, so the PCs also need internet for the race itself.

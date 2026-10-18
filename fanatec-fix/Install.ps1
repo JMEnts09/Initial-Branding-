@@ -27,7 +27,7 @@ $cfgPath = Join-Path $dest 'settings.json'
 $cfg = if (Test-Path $cfgPath) { Get-Content $cfgPath -Raw | ConvertFrom-Json } else {
     [pscustomobject]@{ CarNumber = 1; VenueName = 'F1 RACING EXPERIENCE'; StaffPin = '1234'; IdleSeconds = 60 } }
 function Ask($q, $cur) { $a = Read-Host "$q [$cur]"; if ($a) { $a } else { $cur } }
-$cfg.CarNumber   = [int](Ask 'Car number for THIS rig (1, 2, 3...)' $cfg.CarNumber)
+$cfg.CarNumber   = [int](Ask 'PC number for THIS rig (1, 2, 3...) - shown as PC1, PC2...' $cfg.CarNumber)
 $cfg.VenueName   = Ask 'Venue name shown on screen' $cfg.VenueName
 $cfg.StaffPin    = Ask 'Staff PIN (F12 menu)' $cfg.StaffPin
 $cfg.IdleSeconds = [int](Ask 'Seconds of no use before the video plays' $cfg.IdleSeconds)
@@ -72,7 +72,7 @@ Write-Host "`nApplying Fanatec stability fixes..." -ForegroundColor Yellow
 Write-Host "`nRegistering launcher to start at login..." -ForegroundColor Yellow
 & (Join-Path $dest 'F1-Launcher.ps1') -Install
 
-Write-Host "`nDONE - installed to $dest as CAR $($cfg.CarNumber)." -ForegroundColor Green
+Write-Host "`nDONE - installed to $dest as PC$($cfg.CarNumber)." -ForegroundColor Green
 Write-Host "Branding folder: $media  (attract.mp4, intro.mp4, logo.png)"
 Start-Process explorer.exe $media
 Write-Host 'Make sure Windows logs in automatically (run "netplwiz"), then restart the PC.'
