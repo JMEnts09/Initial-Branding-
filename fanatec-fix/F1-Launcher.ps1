@@ -5,7 +5,8 @@
   - SINGLE PLAYER: works whenever this car's wheel works (network not needed)
   - MULTIPLAYER: only lights up when this car + at least one other car on the LAN are ready
   - Attract video: loops attract.mp4 (in this folder) when nobody has touched the screen for a while
-  - Intro video: plays intro.mp4 (or attract.mp4) full screen from PLAY until the car is at the track (read from F1's UDP telemetry)
+  - Intro video: plays while F1 boots, hides at the menus so staff can set up the race,
+    then staff press F9 after starting the session and it plays again until the car is on track
   - Hidden staff menu (press F12, enter PIN)
 
   Install once on EACH rig (as Administrator), after setting $CarNumber:
@@ -40,6 +41,8 @@ $AttractVideo = Get-ChildItem $PSScriptRoot -Filter 'attract.*' -ErrorAction Sil
 $IntroVideo   = Get-ChildItem $PSScriptRoot -Filter 'intro.*' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
 if (-not $IntroVideo) { $IntroVideo = $AttractVideo }
 $IntroMaxSeconds = 600                           # safety: stop the intro after 10 min even if no on-track signal
+$MenuDelay       = 15                            # seconds after F1's window appears before the video hides for staff
+$TrackVideoKey   = 0x78                          # F9: staff press after starting a session -> video until the car is on track
 $TelemetryPort   = 20777                         # F1 in-game: Settings > Telemetry > UDP Telemetry ON, IP 127.0.0.1, this port
 
 $FanatecVid = 'VID_0EB7'
@@ -60,6 +63,10 @@ Add-Type -AssemblyName System.Windows.Forms, System.Drawing, PresentationFramewo
 [Windows.Forms.Application]::EnableVisualStyles()
 Add-Type @'
 using System; using System.Runtime.InteropServices;
+public static class Keys {
+    [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vKey);
+    public static bool Pressed(int vKey) { return (GetAsyncKeyState(vKey) & 0x8001) != 0; }
+}
 public static class IdleTime {
     [StructLayout(LayoutKind.Sequential)] struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
     [DllImport("user32.dll")] static extern bool GetLastInputInfo(ref LASTINPUTINFO p);
@@ -134,8 +141,12 @@ $LoadingTips = @(
     'Keep both hands on the wheel at all times'
 )
 
-function Show-Intro($game) {
-    if (-not $IntroVideo) { return }
+# Two phases, because staff set up the race in F1's menus:
+#   boot  - from PLAY until F1 reaches its menus (video hides so staff can see them)
+#   track - staff press F9 after starting the session; video until the car is on track
+function Show-Intro($game, $mode = 'boot') {
+    if (-not $IntroVideo -or $script:intro) { return }
+    $script:introMode = $mode
     [void](Test-OnTrack)                          # throw away anything left over from the last race
     $script:intro = New-VideoWindow $IntroVideo ''
     $script:intro.ShowActivated = $false          # keep keyboard/wheel focus on the game, not the video
@@ -159,7 +170,7 @@ function Show-Intro($game) {
     [void]$stack.Children.Add($bar)
     $script:introTip   = & $mk 30 $false ([System.Windows.Media.Brushes]::Gainsboro)
     $skip = & $mk 22 $false ([System.Windows.Media.Brushes]::Gray)
-    $skip.Text = 'Tap the screen to skip the video and watch the game load'
+    $skip.Text = 'Tap the screen to skip the video'
     $skip.Margin = New-Object System.Windows.Thickness(0, 20, 0, 0)
     $bg.Child = $stack
     [void]$grid.Children.Add($bg)
@@ -176,20 +187,27 @@ function Show-Intro($game) {
 function Set-IntroText {
     $elapsed = ((Get-Date) - $script:introStart).TotalSeconds
     $running = Get-Process | Where-Object Name -match $GameProcess
-    $script:introStage.Text = if (-not $running) { "Starting $($script:introGame)…" }
-                              elseif (-not ($running | Where-Object MainWindowHandle -ne 0)) { "Loading $($script:introGame)…" }
-                              else { 'Heading to the track…' }
+    $script:introStage.Text = if ($script:introMode -eq 'track') { 'Heading to the track…' }
+                              elseif (-not $running) { "Starting $($script:introGame)…" }
+                              else { "Loading $($script:introGame)…" }
     $script:introTip.Text = $LoadingTips[[int]($elapsed / 6) % $LoadingTips.Count]
 }
 
 function Update-Intro {
     if (-not $script:intro) { return }
     $elapsed = ((Get-Date) - $script:introStart).TotalSeconds
-    # No telemetry socket: fall back to closing once the game window has been up a little while
-    $fallback = -not $tele -and $elapsed -ge 20 -and (Get-Process | Where-Object { $_.Name -match $GameProcess -and $_.MainWindowHandle -ne 0 })
-    if ((Test-OnTrack) -or $fallback -or $elapsed -ge $IntroMaxSeconds) {
+    $window = Get-Process | Where-Object { $_.Name -match $GameProcess -and $_.MainWindowHandle -ne 0 }
+    if ($window -and -not $script:windowSeen) { $script:windowSeen = Get-Date }
+    if ($script:introMode -eq 'boot') {
+        $done = $script:windowSeen -and ((Get-Date) - $script:windowSeen).TotalSeconds -ge $MenuDelay
+    } else {
+        # No telemetry socket: fall back to a short fixed video
+        $done = (Test-OnTrack) -or (-not $tele -and $elapsed -ge 30)
+    }
+    if ($done -or $elapsed -ge $IntroMaxSeconds) {
         if ($elapsed -ge $IntroMaxSeconds) { Log 'Intro video timed out - no on-track signal from F1' }
         Close-Video $script:intro; $script:intro = $null
+        if ($script:introMode -eq 'boot') { [void][Keys]::Pressed($TrackVideoKey) }   # clear any earlier F9 press
         return
     }
     Set-IntroText
@@ -360,7 +378,8 @@ function Start-Race($mode) {
     $single.Enabled = $false; $multi.Enabled = $false
     [Windows.Forms.Application]::DoEvents()
     Close-Video $script:attract; $script:attract = $null
-    Show-Intro $script:selected
+    $script:windowSeen = $null
+    Show-Intro $script:selected 'boot'
     Start-Process $Games[$script:selected]
     Start-Sleep 3
     $form.TopMost = $false; $form.WindowState = 'Minimized'
@@ -374,6 +393,7 @@ $timer = New-Object Windows.Forms.Timer -Property @{ Interval = 1000 }
 $timer.Add_Tick({
     $script:tick++
     if ($script:racing) {
+        if (-not $script:intro -and [Keys]::Pressed($TrackVideoKey)) { Show-Intro $script:selected 'track' }
         Update-Intro
         if (-not (Get-Process | Where-Object Name -match $GameProcess)) {
             if ($script:launchSeen) {
