@@ -39,31 +39,17 @@ New-Item $media -ItemType Directory -Force | Out-Null
 Get-ChildItem $dest -Include 'attract.*', 'intro.*' -File -Recurse -ErrorAction SilentlyContinue | Move-Item -Destination $media -Force
 Get-ChildItem $src -Filter 'logo.*' -ErrorAction SilentlyContinue | Copy-Item -Destination $media -Force
 
-# Attract video
-$bundled = Get-ChildItem $src -Filter 'attract.*' -ErrorAction SilentlyContinue | Select-Object -First 1
-$current = Get-ChildItem $media -Filter 'attract.*' -ErrorAction SilentlyContinue | Select-Object -First 1
-$prompt  = if ($current) { "Video file to play when idle (drag it here, Enter to keep $($current.Name))" }
-           elseif ($bundled) { "Video file to play when idle (drag it here, Enter to use $($bundled.Name))" }
-           else { 'Video file to play when idle (drag it here, Enter for none)' }
-$v = (Read-Host $prompt).Trim('"', ' ')
-if (-not $v -and -not $current -and $bundled) { $v = $bundled.FullName }
-if ($v) {
-    if (Test-Path $v) {
-        Get-ChildItem $media -Filter 'attract.*' | Remove-Item -Force
-        Copy-Item $v (Join-Path $media ('attract' + [IO.Path]::GetExtension($v))) -Force
-        Write-Host 'Video installed.' -ForegroundColor Green
-    } else { Write-Warning "Video not found: $v" }
-}
-
-# Intro video (plays while F1 loads). Enter = use the idle video for this too
-$curIntro = Get-ChildItem $media -Filter 'intro.*' -ErrorAction SilentlyContinue | Select-Object -First 1
-$iv = (Read-Host ("Video to play while F1 loads (drag it here, Enter to " + $(if ($curIntro) { "keep $($curIntro.Name)" } else { 'use the idle video' }) + ")")).Trim('"', ' ')
-if ($iv) {
-    if (Test-Path $iv) {
-        Get-ChildItem $media -Filter 'intro.*' | Remove-Item -Force
-        Copy-Item $iv (Join-Path $media ('intro' + [IO.Path]::GetExtension($iv))) -Force
-        Write-Host 'Intro video installed.' -ForegroundColor Green
-    } else { Write-Warning "Video not found: $iv" }
+# Videos: no drag-and-drop needed (Windows blocks dragging into an admin window).
+# If the branding folder has no video yet, copy any video found on the desktop into it.
+$videoExt = '.mp4', '.wmv', '.mov', '.avi', '.m4v'
+$hasVideo = Get-ChildItem $media -File | Where-Object Extension -in $videoExt
+if (-not $hasVideo) {
+    $found = @(Get-ChildItem ([Environment]::GetFolderPath('Desktop')), (Join-Path $env:PUBLIC 'Desktop'), $src -File -ErrorAction SilentlyContinue |
+               Where-Object Extension -in $videoExt)
+    foreach ($f in $found) { Copy-Item $f.FullName $media -Force; Write-Host "Video copied to branding folder: $($f.Name)" -ForegroundColor Green }
+    if (-not $found) { Write-Host 'No video found - just copy your .mp4 into the "F1 Arcade Media" folder on the desktop any time.' -ForegroundColor Yellow }
+} else {
+    Write-Host "Using video(s) already in the branding folder: $(($hasVideo.Name) -join ', ')" -ForegroundColor Green
 }
 
 Write-Host "`nApplying Fanatec stability fixes..." -ForegroundColor Yellow
