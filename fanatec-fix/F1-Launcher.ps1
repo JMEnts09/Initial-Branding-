@@ -57,7 +57,7 @@ function Get-AnyVideo {
 function Get-AttractVideo { $v = Get-Media 'attract'; if ($v) { $v } else { Get-AnyVideo } }
 function Get-IntroVideo   { $v = Get-Media 'intro';   if ($v) { $v } else { Get-AttractVideo } }
 $IntroMaxSeconds = 600                           # safety: stop the intro after 10 min even if no on-track signal
-$MenuDelay       = 15                            # seconds after F1's window appears before the video hides for staff
+$MenuDelay       = 40                            # seconds after F1's window appears before the video hides for staff
 $TrackVideoKey   = 0x78                          # F9: staff press after starting a session -> video until the car is on track
 $TelemetryPort   = 20777                         # F1 in-game: Settings > Telemetry > UDP Telemetry ON, IP 127.0.0.1, this port
 
@@ -162,8 +162,14 @@ $LoadingTips = @(
 #   boot  - from PLAY until F1 reaches its menus (video hides so staff can see them)
 #   track - staff press F9 after starting the session; video until the car is on track
 function Show-Intro($game, $mode = 'boot') {
+    try { Show-IntroWindow $game $mode }
+    catch { Log "Intro video failed: $_"; $script:intro = $null }
+}
+function Show-IntroWindow($game, $mode) {
     $video = Get-IntroVideo
-    if (-not $video -or $script:intro) { return }
+    if ($script:intro) { return }
+    if (-not $video) { Log "Intro: no video found in $MediaDir"; return }
+    Log "Intro ($mode): playing $video"
     $script:introMode = $mode
     [void](Test-OnTrack)                          # throw away anything left over from the last race
     $script:intro = New-VideoWindow $video ''
@@ -213,6 +219,8 @@ function Set-IntroText {
 
 function Update-Intro {
     if (-not $script:intro) { return }
+    # F1 grabs the top of the screen when its window opens - push the video back on top
+    $script:intro.Topmost = $false; $script:intro.Topmost = $true
     $elapsed = ((Get-Date) - $script:introStart).TotalSeconds
     $window = Get-Process | Where-Object { $_.Name -match $GameProcess -and $_.MainWindowHandle -ne 0 }
     if ($window -and -not $script:windowSeen) { $script:windowSeen = Get-Date }
