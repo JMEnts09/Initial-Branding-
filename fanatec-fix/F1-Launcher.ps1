@@ -63,7 +63,7 @@ Add-Type -AssemblyName System.Windows.Forms, System.Drawing, PresentationFramewo
 [Windows.Forms.Application]::EnableVisualStyles()
 Add-Type @'
 using System; using System.Runtime.InteropServices;
-public static class Keys {
+public static class StaffKey {
     [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vKey);
     public static bool Pressed(int vKey) { return (GetAsyncKeyState(vKey) & 0x8001) != 0; }
 }
@@ -207,7 +207,7 @@ function Update-Intro {
     if ($done -or $elapsed -ge $IntroMaxSeconds) {
         if ($elapsed -ge $IntroMaxSeconds) { Log 'Intro video timed out - no on-track signal from F1' }
         Close-Video $script:intro; $script:intro = $null
-        if ($script:introMode -eq 'boot') { [void][Keys]::Pressed($TrackVideoKey) }   # clear any earlier F9 press
+        if ($script:introMode -eq 'boot') { [void][StaffKey]::Pressed($TrackVideoKey) }   # clear any earlier F9 press
         return
     }
     Set-IntroText
@@ -393,7 +393,7 @@ $timer = New-Object Windows.Forms.Timer -Property @{ Interval = 1000 }
 $timer.Add_Tick({
     $script:tick++
     if ($script:racing) {
-        if (-not $script:intro -and [Keys]::Pressed($TrackVideoKey)) { Show-Intro $script:selected 'track' }
+        if (-not $script:intro -and [StaffKey]::Pressed($TrackVideoKey)) { Show-Intro $script:selected 'track' }
         Update-Intro
         if (-not (Get-Process | Where-Object Name -match $GameProcess)) {
             if ($script:launchSeen) {
